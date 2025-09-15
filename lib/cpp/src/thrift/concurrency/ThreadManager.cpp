@@ -132,6 +132,8 @@ public:
 
   void setExpireCallback(ExpireCallback expireCallback) override;
 
+  void setQueueSizeChangedCallback(QueueSizeChangedCallback callback) override;
+
 private:
   /**
    * Remove one or more expired tasks.
@@ -157,6 +159,7 @@ private:
   size_t pendingTaskCountMax_;
   size_t expiredCount_;
   ExpireCallback expireCallback_;
+  QueueSizeChangedCallback queueSizeChangedCallback_;
 
   ThreadManager::STATE state_;
   shared_ptr<ThreadFactory> threadFactory_;
@@ -279,6 +282,9 @@ public:
         if (!manager_->tasks_.empty()) {
           task = manager_->tasks_.front();
           manager_->tasks_.pop_front();
+          if (manager_->queueSizeChangedCallback_) {
+            manager_->queueSizeChangedCallback_(manager_->tasks_.size());
+          }
           if (task->state_ == ThreadManager::Task::WAITING) {
             // If the state is changed to anything other than EXECUTING or TIMEDOUT here
             // then the execution loop needs to be changed below.
@@ -480,6 +486,9 @@ void ThreadManager::Impl::add(shared_ptr<Runnable> value, int64_t timeout, int64
   }
 
   tasks_.push_back(std::make_shared<ThreadManager::Task>(value, expiration));
+  if (queueSizeChangedCallback_) {
+    queueSizeChangedCallback_(tasks_.size());
+  }
 
   // If idle thread is available notify it, otherwise all worker threads are
   // running and will get around to this task in time.
@@ -501,6 +510,10 @@ void ThreadManager::Impl::remove(shared_ptr<Runnable> task) {
     if ((*it)->getRunnable() == task)
     {
       tasks_.erase(it);
+      if (queueSizeChangedCallback_) {
+        queueSizeChangedCallback_(tasks_.size());
+      }
+
       return;
     }
   }
@@ -521,6 +534,10 @@ std::shared_ptr<Runnable> ThreadManager::Impl::removeNextPending() {
   shared_ptr<ThreadManager::Task> task = tasks_.front();
   tasks_.pop_front();
 
+  if (queueSizeChangedCallback_) {
+    queueSizeChangedCallback_(tasks_.size());
+  }
+
   return task->getRunnable();
 }
 
@@ -540,7 +557,7 @@ void ThreadManager::Impl::removeExpired(bool justOne) {
       it = tasks_.erase(it);
       ++expiredCount_;
       if (justOne) {
-        return;
+        break;
       }
     }
     else
@@ -548,11 +565,19 @@ void ThreadManager::Impl::removeExpired(bool justOne) {
       ++it;
     }
   }
+  if (queueSizeChangedCallback_) {
+    queueSizeChangedCallback_(tasks_.size());
+  }
 }
 
 void ThreadManager::Impl::setExpireCallback(ExpireCallback expireCallback) {
   Guard g(mutex_);
   expireCallback_ = expireCallback;
+}
+
+void ThreadManager::Impl::setQueueSizeChangedCallback(QueueSizeChangedCallback callback) {
+  Guard g(mutex_);
+  queueSizeChangedCallback_ = callback;
 }
 
 class SimpleThreadManager : public ThreadManager::Impl {

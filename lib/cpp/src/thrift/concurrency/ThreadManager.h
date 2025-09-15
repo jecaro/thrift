@@ -59,6 +59,7 @@ protected:
 
 public:
   typedef std::function<void(std::shared_ptr<Runnable>)> ExpireCallback;
+  typedef std::function<void(size_t)> QueueSizeChangedCallback;
 
   virtual ~ThreadManager() = default;
 
@@ -181,6 +182,11 @@ public:
    * Remove tasks from front of task queue that have expired.
    */
   virtual void removeExpiredTasks() = 0;
+
+  /**
+   * Set a callback to be called when the size of the task queue changes.
+   */
+  virtual void setQueueSizeChangedCallback(QueueSizeChangedCallback callback) = 0;
 
   /**
    * Set a callback to be called when a task is expired and not run.
